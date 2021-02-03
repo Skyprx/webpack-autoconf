@@ -18,9 +18,10 @@ import { emptyIndexJs } from '../../templates/empty/index';
 
 import { tsconfig, tsconfigReact } from '../../templates/ts';
 
-import { css, scss, less, stylus } from '../../templates/styling';
+import { getStyleTags } from '../../templates/styling';
 import stylingRules from './stylingRules';
 import lintingRules from '../common-config/linting';
+import unitTestsRules from '../common-config/unitTests';
 
 function getStyleImports(configItems) {
   const isCss = _.includes(configItems, 'CSS');
@@ -33,32 +34,6 @@ function getStyleImports(configItems) {
     isSass ? [`import "./styles.scss";`] : [],
     isLess ? [`import "./styles.less";`] : [],
     isStylus ? [`import "./styles.styl";`] : []
-  );
-}
-
-function getStyleTags(configItems) {
-  const isCss = _.includes(configItems, 'CSS');
-  const isLess = _.includes(configItems, 'Less');
-  const isSass = _.includes(configItems, 'Sass');
-  const isStylus = _.includes(configItems, 'stylus');
-  const cssStyle = `<style>
-${css}
-</style>`;
-  const lessStyle = `<style lang="less">
-${less}
-</style>`;
-  const sassStyle = `<style lang="scss">
-${scss}
-</style>`;
-  const stylusStyle = `<style lang="styl">
-${stylus}
-</style>`;
-  return _.concat(
-    [],
-    isCss ? cssStyle : [],
-    isSass ? sassStyle : [],
-    isLess ? lessStyle : [],
-    isStylus ? stylusStyle : []
   );
 }
 
@@ -86,12 +61,13 @@ export default (() => {
 
         if (isTypescript) {
           return {
-            'src/App.tsx': reactAppTsx(isHotReact),
+            'src/App.tsx': reactAppTsx(configItems),
             'src/index.tsx': reactIndexTsx(extraImports, isHotReact),
           };
         }
+
         return {
-          'src/App.js': reactAppJs(isHotReact),
+          'src/App.js': reactAppJs(configItems),
           'src/index.js': reactIndexJs(extraImports),
         };
       },
@@ -103,7 +79,8 @@ export default (() => {
         'svelte-loader',
         'svelte-preprocess',
       ],
-      webpack: webpackConfig => {
+      webpack: (webpackConfig, configItems) => {
+        const isPostCSS = _.includes(configItems, 'PostCSS');
         const webpackConfigWithRule = assignModuleRuleAndResolver(
           webpackConfig,
           [
@@ -111,7 +88,9 @@ export default (() => {
               test: /\.svelte$/,
               loader: 'svelte-loader',
               options: {
-                preprocess: `CODE: require('svelte-preprocess')({})`,
+                preprocess: `CODE: require('svelte-preprocess')({${
+                  isPostCSS ? ` postcss: true ` : ''
+                }})`,
               },
             },
           ],
@@ -123,7 +102,10 @@ export default (() => {
         const styling = getStyleTags(configItems);
         return {
           'src/index.js': svelteIndexJs(),
-          'src/App.svelte': svelteAppSvelte(_.join(styling, '\n\n')),
+          'src/App.svelte': svelteAppSvelte(
+            _.join(styling, '\n\n'),
+            configItems
+          ),
         };
       },
     },
@@ -160,13 +142,36 @@ export default (() => {
 
         return _.assign(
           {
-            'src/App.vue': vueIndexAppVue(_.join(styling, '\n')),
+            'src/App.vue': vueIndexAppVue(_.join(styling, '\n'), configItems),
             [indexFilename]: vueIndexTs(),
           },
           isTypescript ? { 'vue-shim.d.ts': vueShimType } : {}
         );
       },
     },
+    Bootstrap: {
+      group: 'UI library',
+      dependencies: configItems => ['bootstrap', 'jquery', 'popper.js'],
+    },
+    'Tailwind CSS': {
+      group: 'UI library',
+      dependencies: configItems => ['tailwindcss'],
+    },
+    'Material-UI': {
+      group: 'UI library',
+      dependencies: configItems => [
+        '@material-ui/core',
+        'fontsource-roboto',
+        '@material-ui/icons',
+      ],
+    },
+    Jest: unitTestsRules.Jest,
+    Mocha: unitTestsRules.Mocha,
+    Chai: unitTestsRules.Chai,
+    Jasmine: unitTestsRules.Jasmine,
+    AVA: unitTestsRules.AVA,
+    Cypress: unitTestsRules.Cypress,
+    TestCafe: unitTestsRules.TestCafe,
     Babel: {
       group: 'Transpiler',
       babel: (babelConfig, configItems) => ({
@@ -210,7 +215,7 @@ export default (() => {
         const isVue = _.includes(configItems, 'Vue');
         const typescriptModule = {
           test: /\.ts(x)?$/,
-          use: ['ts-loader'],
+          loader: 'ts-loader',
           exclude: /node_modules/,
         };
         if (isVue) {
@@ -329,9 +334,7 @@ export default (() => {
     },
     'HTML webpack plugin': {
       group: 'Webpack plugins',
-      devDependencies: configItems => [
-        'html-webpack-plugin',
-      ],
+      devDependencies: configItems => ['html-webpack-plugin'],
       webpackImports: [
         "const HtmlWebpackPlugin = require('html-webpack-plugin');",
       ],
@@ -371,19 +374,20 @@ export default (() => {
         return addPlugin(webpackConfig, `CODE:new MiniCssExtractPlugin()`);
       },
     },
-    "CopyWebpackPlugin": {
+    CopyWebpackPlugin: {
       group: 'Webpack plugins',
       devDependencies: configItems => ['copy-webpack-plugin'],
-      webpackImports: [
-        "const CopyPlugin = require('copy-webpack-plugin');",
-      ],
+      webpackImports: ["const CopyPlugin = require('copy-webpack-plugin');"],
       webpack: webpackConfig => {
-        return addPlugin(webpackConfig, `CODE:new CopyPlugin([
-  { from: 'src/index.html' }
-])`);
+        return addPlugin(
+          webpackConfig,
+          `CODE:new CopyPlugin({
+  patterns: [{ from: 'src/index.html' }],
+})`
+        );
       },
     },
-    "CleanWebpackPlugin": {
+    CleanWebpackPlugin: {
       group: 'Webpack plugins',
       devDependencies: configItems => ['clean-webpack-plugin'],
       webpackImports: [
@@ -409,7 +413,7 @@ export default (() => {
       }),
       packageJson: {
         scripts: {
-          start: 'webpack-dev-server --hot --mode development',
+          start: 'webpack serve --hot --mode development',
         },
       },
     },
@@ -444,8 +448,8 @@ export default (() => {
     base: {
       packageJson: {
         scripts: {
-          'build-dev': 'webpack -d --mode development',
-          'build-prod': 'webpack -p --mode production',
+          'build-dev': 'webpack --mode development',
+          'build-prod': 'webpack --mode production',
         },
       },
       devDependencies: ['webpack', 'webpack-cli'],

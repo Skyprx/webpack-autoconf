@@ -1,8 +1,17 @@
+import _ from 'lodash';
+
 export const baseWebpack = {
   entry: './src/index.js',
   output: {
     path: "CODE:path.resolve(__dirname, 'dist')",
     filename: 'bundle.js',
+  },
+};
+
+export const baseSnowpackConfig = {
+  mount: {
+    dist: '/',
+    src: '/',
   },
 };
 
@@ -26,6 +35,7 @@ export const packageJson = {
 export const indexHtml = ({
   bundleFilename = 'bundle.js',
   cssFilename,
+  isModule = false,
 }) => `<!DOCTYPE html>
 <html>
     <head>
@@ -38,11 +48,21 @@ export const indexHtml = ({
     </head>
     <body>
         <div id="app"></div>
-        <script src="${bundleFilename}"></script>
+        <script${
+          isModule ? ` type="module"` : ``
+        } src="${bundleFilename}"></script>
     </body>
 </html>`;
 
-export const readmeFile = (name, isReact, isHot) => `# ${name}
+export const readmeFile = (name, features) => {
+  const isReact = _.includes(features, 'React');
+  const isTestFrameworkRunWithTest = !_.isEmpty(
+    _.intersection(features, ['AVA', 'Mocha', 'Jest', 'Jasmine', 'TestCafe'])
+  );
+  const isCypress = _.includes(features, 'Cypress');
+
+  const isHot = _.includes(features, 'React hot loader');
+  return `# ${name}
 
 Empty project.
 
@@ -82,14 +102,47 @@ ${
   isReact
     ? 'Open the file `dist/index.html` in your browser'
     : '```sh\nnode dist/bundle.js\n```'
-}
+}${
+    isTestFrameworkRunWithTest || isCypress
+      ? `
 
+## Testing`
+      : ''
+  }${
+    isTestFrameworkRunWithTest
+      ? `
+
+To run unit tests:
+
+\`\`\`sh
+npm test
+\`\`\``
+      : ''
+  }
+${
+  isCypress
+    ? `
+To run cypress:
+
+\`\`\`sh
+npm cypress:open
+\`\`\`
+`
+    : ''
+}
 ## Credits
 
 Made with [createapp.dev](https://createapp.dev/)
 `;
+};
 
-export const readmeFileParcel = (name, isReact) => `# ${name}
+export const readmeFileParcel = (name, features) => {
+  const isReact = _.includes(features, 'React');
+  const isTestFrameworkRunWithTest = !_.isEmpty(
+    _.intersection(features, ['AVA', 'Mocha', 'Jest', 'Jasmine', 'TestCafe'])
+  );
+  const isCypress = _.includes(features, 'Cypress');
+  return `# ${name}
 
 Empty project.
 
@@ -119,13 +172,105 @@ ${
   isReact
     ? 'Open the file `dist/index.html` in your browser'
     : '```sh\nnode dist/bundle.js\n```'
-}
+}${
+    isTestFrameworkRunWithTest || isCypress
+      ? `
 
+## Testing`
+      : ''
+  }${
+    isTestFrameworkRunWithTest
+      ? `
+
+To run unit tests:
+
+\`\`\`sh
+npm test
+\`\`\``
+      : ''
+  }
+${
+  isCypress
+    ? `
+To run cypress:
+
+\`\`\`sh
+npm cypress:open
+\`\`\`
+`
+    : ''
+}
 ## Credits
 
 Made with [createapp.dev](https://createapp.dev/)
 
 `;
+};
+
+export const readmeFileSnowpack = (name, features) => {
+  const isReact = _.includes(features, 'React');
+  const isTestFrameworkRunWithTest = !_.isEmpty(
+    _.intersection(features, ['AVA', 'Mocha', 'Jest', 'Jasmine', 'TestCafe'])
+  );
+  const isCypress = _.includes(features, 'Cypress');
+  return `# ${name}
+
+Empty project.
+
+## How to run on localhost
+
+First install dependencies:
+
+\`\`\`sh
+npm install
+\`\`\`
+
+To run in dev mode mode:
+
+\`\`\`sh
+npm start
+\`\`\`
+
+Then go to http://localhost:8080
+
+To create a production build:
+
+\`\`\`sh
+npm run build
+\`\`\`${
+    isTestFrameworkRunWithTest || isCypress
+      ? `
+
+## Testing`
+      : ''
+  }${
+    isTestFrameworkRunWithTest
+      ? `
+
+To run unit tests:
+
+\`\`\`sh
+npm test
+\`\`\``
+      : ''
+  }
+${
+  isCypress
+    ? `
+To run cypress:
+
+\`\`\`sh
+npm cypress:open
+\`\`\`
+`
+    : ''
+}
+## Credits
+
+Made with [createapp.dev](https://createapp.dev/)
+
+`;
+};
 
 export const gitignore = () => `
 .cache/

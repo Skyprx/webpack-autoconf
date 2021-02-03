@@ -12,6 +12,7 @@ import {
   less,
   stylus,
   postCssConfig,
+  tailwindcss,
 } from '../../templates/styling';
 
 function cssRules() {
@@ -47,7 +48,12 @@ function cssRules() {
       if (isVue || isSvelte) {
         return {};
       }
-      return { 'src/styles.css': css };
+      const isTailwindcss = _.includes(configItems, 'Tailwind CSS');
+      return {
+        'src/styles.css': isTailwindcss
+          ? tailwindcss({ withPostCSS: true })
+          : css,
+      };
     },
   };
 }
@@ -160,7 +166,8 @@ function postCssRules() {
     group: 'Styling',
     devDependencies: configItems => ['postcss-loader', 'autoprefixer'],
     files: configItems => {
-      return { 'postcss.config.js': postCssConfig };
+      const isTailwindcss = _.includes(configItems, 'Tailwind CSS');
+      return { 'postcss.config.js': postCssConfig(isTailwindcss) };
     },
   };
 }

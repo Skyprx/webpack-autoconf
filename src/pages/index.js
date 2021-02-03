@@ -15,6 +15,7 @@ import { CourseSignupForm } from '../components/SignupForms';
 import {
   webpackConfig,
   parcelConfig,
+  snowpackConfig,
 } from '../configurator/configurator-config';
 
 import {
@@ -32,17 +33,22 @@ import Features, {
 } from '../components/configurator/Features';
 import generateProject, {
   generateParcelProject,
+  generateSnowpackProject,
 } from '../configurator/project-generator';
 
 import onboardingHelp from '../onboardingHelp';
 import DocsViewer from '../components/DocsViewer';
 import { trackPageView, gaSendEvent } from '../googleAnalytics';
 
-const StepByStepArea = ({ features, newBabelConfig, isReact, isWebpack }) => {
-  const newNpmConfig = getNpmDependencies(
-    isWebpack ? webpackConfig : parcelConfig,
-    features
-  );
+const StepByStepArea = ({ features, newBabelConfig, isReact, bundler }) => {
+  const isWebpack = bundler === 'webpack';
+  let config = webpackConfig;
+  if (bundler === 'parcel') {
+    config = parcelConfig;
+  } else if (bundler === 'snowpack') {
+    config = snowpackConfig;
+  }
+  const newNpmConfig = getNpmDependencies(config, features);
 
   const npmInstallCommand = _.isEmpty(newNpmConfig.dependencies)
     ? ''
@@ -106,7 +112,9 @@ const StepByStepArea = ({ features, newBabelConfig, isReact, isWebpack }) => {
           {babelStep}
           {srcFoldersStep}
         </ol>
-        <Link to="/webpack-course">Need more detailed instructions?</Link>
+        {isWebpack ? (
+          <Link to="/webpack-course">Need more detailed instructions?</Link>
+        ) : null}
       </div>
     </div>
   );
@@ -116,7 +124,7 @@ StepByStepArea.propTypes = {
   features: PropTypes.arrayOf(PropTypes.string).isRequired,
   newBabelConfig: PropTypes.string,
   isReact: PropTypes.bool.isRequired,
-  isWebpack: PropTypes.bool.isRequired,
+  bundler: PropTypes.string.isRequired,
 };
 
 StepByStepArea.defaultProps = {
@@ -157,6 +165,22 @@ function Tabs({ selected, setSelected }) {
           />
           <div>Parcel</div>
         </button>
+
+        <button
+          onClick={() => setSelected('snowpack')}
+          className={[
+            selected === 'snowpack' ? styles.selectedTab : null,
+            styles.snowpackTab,
+          ].join(' ')}
+        >
+          <img
+            alt="snowpack logo"
+            src={require(`../../images/snowpack-logo${
+              selected === 'snowpack' ? '-color' : ''
+            }.png`)}
+          />
+          <div>Snowpack</div>
+        </button>
       </nav>
     </div>
   );
@@ -169,7 +193,7 @@ Tabs.propTypes = {
 
 Modal.setAppElement('#___gatsby');
 
-function DownloadButton({ url, onClick, filename }) {
+function DownloadButton({ url, onClick, filename, buildTool }) {
   const [modalOpen, setModalOpen] = useState(false);
   const customStyles = {
     content: {
@@ -188,7 +212,9 @@ function DownloadButton({ url, onClick, filename }) {
         className={styles.btn}
         onClick={() => {
           onClick();
-          setModalOpen(true);
+          if (buildTool === 'webpack') {
+            setModalOpen(true);
+          }
         }}
         id="download"
       >
@@ -214,7 +240,7 @@ function DownloadButton({ url, onClick, filename }) {
         </button>
         <br />
         <br />
-        <p>Enjoy your newly created webpack project!</p>
+        <p>Enjoy your newly created {buildTool} project!</p>
 
         <h3>Learn webpack with my free email course</h3>
         <div>
@@ -238,6 +264,7 @@ DownloadButton.propTypes = {
   url: PropTypes.string,
   filename: PropTypes.string.isRequired,
   onClick: PropTypes.func.isRequired,
+  buildTool: PropTypes.string.isRequired,
 };
 
 DownloadButton.defaultProps = {
@@ -257,6 +284,9 @@ const selectionRules = {
     allSelectionRules.additionalSelectFunctions.removeEslintIfTypscript,
     allSelectionRules.additionalSelectFunctions
       .addHTMLWebpackPluginIfCodeSplitVendors,
+    allSelectionRules.additionalSelectFunctions.addPostCSSandCSSIfTailwindCSS,
+    allSelectionRules.additionalSelectFunctions.removeMaterialIfNotReact,
+    allSelectionRules.additionalSelectFunctions.addCSSifBootstrap,
   ],
 };
 
@@ -267,6 +297,17 @@ const parcelSelectionRules = {
   additionalSelectFunctions: [
     allSelectionRules.additionalSelectFunctions.enforceMainLibrary,
     allSelectionRules.additionalSelectFunctions.addBabelIfReact,
+    allSelectionRules.additionalSelectFunctions.addPostCSSandCSSIfTailwindCSS,
+    allSelectionRules.additionalSelectFunctions.removeMaterialIfNotReact,
+  ],
+};
+
+const snowpackSelectionRules = {
+  stopSelectFunctions: [],
+  additionalSelectFunctions: [
+    allSelectionRules.additionalSelectFunctions.enforceMainLibrary,
+    allSelectionRules.additionalSelectFunctions.addCssIfPostCSS,
+    allSelectionRules.additionalSelectFunctions.addPostCSSandCSSIfTailwindCSS,
   ],
 };
 
@@ -297,6 +338,13 @@ const buildConfigConfig = {
       <br key={3} />,
     ],
   },
+  snowpack: {
+    featureConfig: snowpackConfig,
+    projectGeneratorFunction: generateSnowpackProject,
+    defaultFile: 'package.json',
+    selectionRules: snowpackSelectionRules,
+    extraElements: [],
+  },
 };
 
 const initialState = (selectedTab = 'webpack') => ({
@@ -312,6 +360,7 @@ function reducer(state, action) {
       );
 
       let shouldSetNoLibrary = state.selectedFeatures['No library'];
+
       if (action.selectedTab === 'parcel' && state.selectedFeatures.Svelte) {
         // Svelte was selected when switching to the parcel tab
         // which isn't supported so we set the flag shouldSetNoLibrary to
@@ -325,11 +374,31 @@ function reducer(state, action) {
           _.includes(newAllPossibleFeatures, feature) && selected
       );
 
+      let shouldSetBabel = filteredFeatures.Babel;
+      if (
+        (action.selectedTab === 'webpack' || action.selectedTab === 'parcel') &&
+        state.selectedFeatures.React
+      ) {
+        // React was selected when switching to the webpack tab
+        // if we come from snowpack, then babel is not set.
+        // it must be set if React should work properly
+        shouldSetBabel = true;
+      }
+
+      if (
+        action.selectedTab === 'snowpack' &&
+        (state.selectedFeatures.Vue || state.selectedFeatures.Svelte)
+      ) {
+        // if we select snowpack, and vue was selected, then we must select no lib
+        shouldSetNoLibrary = true;
+      }
+
       return {
         ...state,
         selectedTab: action.selectedTab,
         selectedFeatures: {
           ...filteredFeatures,
+          Babel: shouldSetBabel,
           'No library': shouldSetNoLibrary,
         },
       };
@@ -429,7 +498,7 @@ function Configurator(props) {
     // in npm package names
     const whitelistRegex = /^[a-z0-9_.-]+$/;
     const isValidCharacters = whitelistRegex.test(name);
-    if(!isValidCharacters && name) return;
+    if (!isValidCharacters && name) return;
 
     // Use validation function from third party library
     // to check if the name is a valid npm package name.
@@ -438,7 +507,7 @@ function Configurator(props) {
     // so this is needed too because the project name is used
     // as both the directory name and in package.json
     const isValidNpmPackage = validate(name);
-    if(isValidNpmPackage) {
+    if (isValidNpmPackage) {
       // All validation succeeded so we set the new project name
       setProjectName(name);
     }
@@ -456,8 +525,11 @@ function Configurator(props) {
       });
 
       zip.generateAsync({ type: 'blob' }).then(function(blob) {
-        saveAs(blob, `${projectName ||
-          getDefaultProjectName("empty-project", selectedArray)}.zip`);
+        saveAs(
+          blob,
+          `${projectName ||
+            getDefaultProjectName('empty-project', selectedArray)}.zip`
+        );
       });
     });
   }
@@ -471,6 +543,7 @@ function Configurator(props) {
 
   if (!isReact) {
     delete showFeatures['React hot loader'];
+    delete showFeatures['Material-UI'];
   }
 
   if (isTypescript) {
@@ -504,10 +577,7 @@ function Configurator(props) {
           />
           <div className={styles.desktopOnly}>
             <div className={styles.projectNameHelp}>
-              <label
-                className={styles.projectName}
-                htmlFor="project-name"
-              >
+              <label className={styles.projectName} htmlFor="project-name">
                 Project name
               </label>
               <FeatureHelp
@@ -524,6 +594,7 @@ function Configurator(props) {
               className={styles.projectNameInput}
             />
             <DownloadButton
+              buildTool={state.selectedTab}
               filename={`${projectName}.zip`}
               onClick={e => {
                 downloadZip();
@@ -566,6 +637,7 @@ function Configurator(props) {
               className={styles.projectNameInput}
             />
             <DownloadButton
+              buildTool={state.selectedTab}
               filename={`${projectName}.zip`}
               onClick={e => {
                 downloadZip();
@@ -585,7 +657,7 @@ function Configurator(props) {
           features={selectedArray}
           newBabelConfig={newBabelConfig}
           isReact={isReact}
-          isWebpack={state.selectedTab === 'webpack'}
+          bundler={state.selectedTab}
         />
       </div>
     </div>

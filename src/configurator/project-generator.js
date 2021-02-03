@@ -1,16 +1,26 @@
 import _ from 'lodash';
 
-import { readmeFile, readmeFileParcel, gitignore } from '../templates/base';
+import {
+  readmeFile,
+  readmeFileParcel,
+  readmeFileSnowpack,
+  gitignore,
+} from '../templates/base';
 
 import {
   createWebpackConfig,
+  createSnowpackConfig,
   createBabelConfig,
   getDefaultProjectName,
   getPackageJson,
   createAdditionalFilesMap,
 } from './configurator';
 
-import { parcelConfig, webpackConfig } from './configurator-config';
+import {
+  parcelConfig,
+  webpackConfig,
+  snowpackConfig,
+} from './configurator-config';
 
 /*
   this function will call an external API to get version for node
@@ -37,7 +47,7 @@ const generateProject = (features, name, getNodeVersionPromise) => {
     {},
     {
       'webpack.config.js': newWebpackConfig,
-      'README.md': readmeFile(projectName, isReact, isHotReact),
+      'README.md': readmeFile(projectName, features),
       '.gitignore': gitignore(),
       'package.json': 'empty package.json',
     },
@@ -62,7 +72,6 @@ const generateProject = (features, name, getNodeVersionPromise) => {
 export function generateParcelProject(features, name, getNodeVersionPromise) {
   const isBabel = _.includes(features, 'Babel');
   const isReact = _.includes(features, 'React');
-  const isTypescript = _.includes(features, 'Typescript');
   const newBabelConfig = createBabelConfig(features);
   const additionalFilesMap = createAdditionalFilesMap(parcelConfig, features);
   const projectName = name || getDefaultProjectName('empty-project', features);
@@ -74,7 +83,7 @@ export function generateParcelProject(features, name, getNodeVersionPromise) {
   const fileMap = _.assign(
     {},
     {
-      'README.md': readmeFileParcel(projectName, isReact, false),
+      'README.md': readmeFileParcel(projectName, features),
       '.gitignore': gitignore(),
     },
     maybeConfigBabel,
@@ -85,6 +94,39 @@ export function generateParcelProject(features, name, getNodeVersionPromise) {
   if (getNodeVersionPromise) {
     return getPackageJson(
       parcelConfig,
+      projectName,
+      getNodeVersionPromise,
+      features
+    ).then(packageJson => {
+      fileMap['package.json'] = JSON.stringify(packageJson, null, 2);
+      return fileMap;
+    });
+  }
+  return fileMap;
+}
+
+export function generateSnowpackProject(features, name, getNodeVersionPromise) {
+  const newSnowpackConfig = createSnowpackConfig(
+    features,
+    snowpackConfig.features
+  );
+  const additionalFilesMap = createAdditionalFilesMap(snowpackConfig, features);
+  const projectName = name || getDefaultProjectName('empty-project', features);
+
+  const fileMap = _.assign(
+    {},
+    {
+      'snowpack.config.json': newSnowpackConfig,
+      'README.md': readmeFileSnowpack(projectName, features),
+      '.gitignore': gitignore(),
+    },
+    additionalFilesMap
+  );
+
+  // TODO there is some duplicated code here. sorry
+  if (getNodeVersionPromise) {
+    return getPackageJson(
+      snowpackConfig,
       projectName,
       getNodeVersionPromise,
       features

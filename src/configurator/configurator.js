@@ -5,6 +5,7 @@ import {
   baseWebpack,
   baseWebpackImports,
   packageJson,
+  baseSnowpackConfig,
 } from '../templates/base';
 import { webpackConfig } from './configurator-config';
 
@@ -22,7 +23,7 @@ function stringifyReplacer(value, indent, stringify) {
   return stringify(value);
 }
 
-function createConfig(configItems, configType) {
+function createConfig(configItems, configType, features) {
   const isReact = _.includes(configItems, 'React');
   const isTypescript = _.includes(configItems, 'Typescript');
   const isHotReact = _.includes(configItems, 'React hot loader');
@@ -44,17 +45,21 @@ function createConfig(configItems, configType) {
     ];
   }
   const baseWebpackTsSupport = _.assignIn(baseWebpack, { entry });
-  const base = configType === 'webpack' ? baseWebpackTsSupport : {};
-  return jsStringify(
-    _.reduce(
-      configItems,
-      (acc, currentValue) =>
-        features[currentValue][configType](acc, configItems),
-      base
-    ),
-    stringifyReplacer,
-    2
+  let base = {};
+  if (configType === 'webpack') {
+    base = baseWebpackTsSupport;
+  } else if (configType === 'snowpack') {
+    base = baseSnowpackConfig;
+  }
+  const configJson = _.reduce(
+    configItems,
+    (acc, currentValue) => features[currentValue][configType](acc, configItems),
+    base
   );
+  if (configType === 'snowpack') {
+    return JSON.stringify(configJson, null, 2);
+  }
+  return jsStringify(configJson, stringifyReplacer, 2);
 }
 
 export function getNpmDependencies(featureConfig, configItems) {
@@ -97,7 +102,7 @@ export function getWebpackImports(configItems) {
 }
 
 export function createBabelConfig(configItems) {
-  const config = createConfig(configItems, 'babel');
+  const config = createConfig(configItems, 'babel', features);
   return config === '{}' ? null : config;
 }
 
@@ -132,7 +137,7 @@ function createWebpackConfigExportStatement(configItems) {
 export function createWebpackConfig(configItems) {
   const imports = _.concat(baseWebpackImports, getWebpackImports(configItems));
   const importsLines = imports.join('\n');
-  const config = createConfig(configItems, 'webpack');
+  const config = createConfig(configItems, 'webpack', features);
   const exportStatement = createWebpackConfigExportStatement(configItems);
 
   return `${importsLines}
@@ -140,6 +145,10 @@ export function createWebpackConfig(configItems) {
 const config = ${config};
 
 module.exports = ${exportStatement};`;
+}
+
+export function createSnowpackConfig(configItems, features) {
+  return createConfig(configItems, 'snowpack', features);
 }
 
 // some config items can alter the package json. for example the scripts section
